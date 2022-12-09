@@ -4,8 +4,6 @@
 // compile with nvcc -o ll gpuLL.cu
 
 // the first 3 bits of a pointer are empty, use the first bit as marker
-// #define SET_MARKED(p)  ((node *)(((unsigned long long)(p)) | 1))
-// #define CLEAR_MARKED(p)   ((node *)(((unsigned long long)(p)) & ~1))
 #define IS_MARKED(p)  ((int)(((unsigned long long)(p)) & 1))
 #define GET_MARKED_REF(p) (((unsigned long long)(p)) | 1)
 #define GET_UNMARKED_REF(p) (((unsigned long long)(p)) & ~1)
@@ -16,14 +14,6 @@ struct node {
 };
 
 __device__ struct node *head;
-
-// __device__ struct node *createNode() {
-// 	unsigned id = blockIdx.x * blockDim.x + threadIdx.x; 
-// 	struct node *newnode = (struct node *)malloc(sizeof(struct node));
-// 	newnode->data = id;
-// 	newnode->next = NULL;
-// 	return newnode;
-// }
 
 __device__ struct node *createNode(int val) {
 	struct node *newnode = (struct node *)malloc(sizeof(struct node));
@@ -52,56 +42,58 @@ __global__ void addFront(int val)
 	addFront(newnode);
 }
 
-// __global__ void listAdd() {
-// 	// unsigned id = blockIdx.x * blockDim.x + threadIdx.x; 
-// 	struct node *myoldhead, *actualoldhead;
-// 	struct node *newnode = createNode();
-// 	// struct node *newnode = createNode(id);
-
-// 	do {
-// 		myoldhead = head;  
-// 		newnode->next = myoldhead;
-// 		actualoldhead = (struct node *)atomicCAS((unsigned long long *)&head, (unsigned long long)myoldhead, (unsigned long long)newnode);  
-// 	} while (actualoldhead != myoldhead);
-// }
-
-__global__ void listAdd(int *insertVals) {
-	// original, add before head
-	unsigned idx = blockIdx.x * blockDim.x + threadIdx.x; 
-	struct node *myoldhead, *actualoldhead;
-	if (idx<5)
-	{
-		// printf("insertVal: %d\n",insertVals[idx]);
-		struct node *newnode = createNode(insertVals[idx]);
-
-		do {
-			myoldhead = head;  
-			newnode->next = myoldhead;
-			actualoldhead = (struct node *)atomicCAS((unsigned long long *)&head, (unsigned long long)myoldhead, (unsigned long long)newnode);  
-		} while (actualoldhead != myoldhead);
-	}
+__device__ void nodePrint(struct node *ptr) {
+	if (ptr->data==-1)
+		if(ptr->next)
+			printf("head ");
+		else
+			printf("tail\n");
+	else
+		printf("%d ", ptr->data);
 }
 
-__global__ void listInsert(int *insertVals) {
-	// add after head
-	unsigned idx = blockIdx.x * blockDim.x + threadIdx.x; 
-	struct node *myold, *actualold;
-	if (idx<5)
+__global__ void listPrint() {
+	printf("listPrint\n");
+	int nnodes = 0;
+	for (struct node *ptr = head; ptr; ptr = (struct node *)GET_UNMARKED_REF(ptr->next), ++nnodes)
 	{
-		printf("insertVal: %d\n",insertVals[idx]);
-		struct node *newnode = createNode(insertVals[idx]);
+		// printf("ptr: %llu, ",GET_UNMARKED_REF(ptr));
+		nodePrint(ptr);
+	}
+	printf("Number of nodes = %d\n", nnodes);
+}
 
-		do {
-			myold = head->next; 
-			newnode->next = myold;
-			actualold = (struct node *)atomicCAS((unsigned long long *)&head->next, (unsigned long long)myold, (unsigned long long)newnode);  
-		} while (actualold != myold);
+__global__ void listPrintRaw() {
+	// print with marked nodes
+	printf("listPrintRaw\n");
+	int nnodes = 0;
+	for (struct node *ptr = head; ptr; ptr = (struct node *)GET_UNMARKED_REF(ptr->next))
+	{	
+		// printf("ptr: %llu, ",GET_UNMARKED_REF(ptr));
+		if(!IS_MARKED(ptr->next))
+		{
+			nodePrint(ptr);
+			nnodes++;
+		}
+	}
+	printf("Number of nodes = %d\n", nnodes);
+}
+
+__device__ void printVal(int val)
+{
+	printf("val: %d\n",val);
+}
+
+__global__ void printVal(int *arr, int N)
+{
+	for (int i=0;i<N;i++)
+	{
+		printVal(arr[i]);
 	}
 }
 
 __device__ struct node *searchNode(int val)
 {
-	// search the node and return its prev ref
 	struct node *cur;
 	for (struct node *ptr = head; ptr->next; ptr = (struct node *)GET_UNMARKED_REF(ptr->next))
 	{
@@ -112,69 +104,16 @@ __device__ struct node *searchNode(int val)
 		}
 	}
 	return NULL;
-/*
-	for (struct node *ptr = head; ptr; ptr = ptr->next)
-	{
-		if (ptr->data == val)
-		{
-			return ptr;
-		}
-	}
-	return NULL;
-*/
 }
 
-__global__ void listInsert(int *insertVals, int *insertPrevs, int N) {
-	// insert ater a certain value
-	unsigned idx = blockIdx.x * blockDim.x + threadIdx.x; 
-	if (idx<N)
-	{
-		struct node *myold, *actualold;
-		// printf("insertVal: %d\n",insertVals[idx]);
-		struct node *prev = searchNode(insertPrevs[idx]);
-		if (prev)
-		{
-			struct node *newnode = createNode(insertVals[idx]);
-
-			do {
-				myold = prev->next;  // should reload every iteration
-				newnode->next = myold;
-				actualold = (struct node *)atomicCAS((unsigned long long *)&prev->next, (unsigned long long)myold, (unsigned long long)newnode);  
-			} while (actualold != myold);
-		}
-		else
-			printf("Prev %d not found\n", insertPrevs[idx]);
-	}
-}
-
-__device__ struct node *searchNode(int val, struct node **prev)
-{
-	// search the node and return its prev ref
-	struct node *cur;
-	for (struct node *ptr = head; ptr->next; ptr = (struct node *)GET_UNMARKED_REF(ptr->next))
-	{
-		cur = (struct node *)GET_UNMARKED_REF(ptr->next);
-		if (cur->data == val)
-		{
-			*prev = ptr;
-			return cur;
-		}
-	}
-	*prev = NULL;
-	return NULL;
-}
-
-// __host__ __device__ struct node *listSearch(int val, struct node **prev)
 __device__ struct node *listSearch(int val)
 {
 	printf("listSearch val: %d\n", val);
-	// search the node and return its prev ref in argument
 	struct node *cur=NULL, *p, *prev_next;
 	struct node *prev;
 	int cnt = 0;
 	while(1)
 	{
-		// printf("cnt: %d\n", cnt++);
 		// step1: traverse the list and find the node
 		for(cur=head; cur->next; cur=(struct node *)GET_UNMARKED_REF(cur->next))
 		{
@@ -251,6 +190,7 @@ __device__ struct node *listSearch(int val)
 __global__ void listSearchOne(int val)
 {
 	listSearch(val);
+	// printf("\nFind node %d\nunmarked addr: %llu, marked addr: %llu, data: %d\n", val, GET_UNMARKED_REF(p), GET_MARKED_REF(p), ((struct node *)GET_UNMARKED_REF(p))->data);
 }
 
 __device__ void listTraverseDel()
@@ -262,38 +202,12 @@ __device__ void listTraverseDel()
 	{
 		if(IS_MARKED(cur->next))  // p->next is marked means p is deleted logically
 		{
-			// printf("next is marked\n");
 			continue;  // skip this node
 		}
 		if(prev->next!=cur)  // stop here and do deletion
 		{
 			printf("prev: %d, cur: %d\n", prev->data, cur->data);
 			prev->next=cur;
-
-			// // Step 2.1: If an insertions was made in the meantime between left and right, repeat search.
-			// int inserted = 0;
-			// for(p=(struct node *)GET_UNMARKED_REF(prev->next); p==cur; p=(struct node *)GET_UNMARKED_REF(p->next))
-			// {
-			// 	// loop from prev to cur, if there is any unmarked node, it is inserted meantime, need to search again
-            //     if (!IS_MARKED(p->next))
-			// 		inserted = 1;
-			// }
-			// if (inserted==1)
-			// 	continue;  // search again
-			
-			// // No unmarked nodes in between now
-			// // Step 2.2: Try to "remove" the marked nodes between left and right.
-			// prev_next = (struct node *)atomicCAS((unsigned long long *)&prev->next, GET_UNMARKED_REF(prev->next), (unsigned long long)cur);  
-			// // update prev->next to cur, delete marked nodes in between (no garbage collection yet)
-            // if(prev_next!=(struct node *)GET_UNMARKED_REF(prev->next))
-			// {
-			// 	if(!prev_next) printf("prev_next NULL\n");
-			// 	else printf("prev_next->data: %d\n",prev_next->data);
-			// 	if(!prev->next) printf("prev->next NULL\n");
-			// 	else printf("prev->next->data: %d\n",prev->next->data);
-			// 	// somone changed left->next, deletion failed, search again
-			// 	continue;
-			// }
 		}
 		prev=cur;
 	}
@@ -305,74 +219,26 @@ __global__ void listTraverse()
 	listTraverseDel();
 }
 
-__device__ void nodePrint(struct node *ptr) {
-	if (ptr->data==-1)
-		if(ptr->next)
-			printf("head ");
+__global__ void listInsert(int *insertVals, int *insertPrevs, int N) {
+	// insert ater a certain value
+	unsigned idx = blockIdx.x * blockDim.x + threadIdx.x; 
+	if (idx<N)
+	{
+		struct node *myold, *actualold;
+		struct node *prev = listSearch(insertPrevs[idx]);
+		// struct node *prev = searchNode(insertPrevs[idx]);
+		if (prev)
+		{
+			struct node *newnode = createNode(insertVals[idx]);
+
+			do {
+				myold = prev->next;  // should reload every iteration
+				newnode->next = myold;
+				actualold = (struct node *)atomicCAS((unsigned long long *)&prev->next, (unsigned long long)myold, (unsigned long long)newnode);  
+			} while (actualold != myold);
+		}
 		else
-			printf("tail\n");
-	else
-		printf("%d ", ptr->data);
-}
-
-__global__ void listPrint() {
-	printf("listPrint\n");
-	int nnodes = 0;
-	for (struct node *ptr = head; ptr; ptr = (struct node *)GET_UNMARKED_REF(ptr->next), ++nnodes)
-	{
-		// printf("ptr: %llu, ",GET_UNMARKED_REF(ptr));
-		nodePrint(ptr);
-	}
-	printf("Number of nodes = %d\n", nnodes);
-}
-
-__global__ void listPrintHead() {
-	struct node *p=head;
-	nodePrint(p);
-	printf("head ptr: %llu, ",GET_UNMARKED_REF(p));
-}
-
-__global__ void listPrintRaw() {
-	printf("listPrintRaw\n");
-	int nnodes = 0;
-	for (struct node *ptr = head; ptr; ptr = (struct node *)GET_UNMARKED_REF(ptr->next))
-	{	
-		// printf("ptr: %llu, ",GET_UNMARKED_REF(ptr));
-		if(!IS_MARKED(ptr->next))
-		{
-			nodePrint(ptr);
-			nnodes++;
-		}
-	}
-	printf("Number of nodes = %d\n", nnodes);
-}
-
-__device__ void listPrintRawDev() {
-	printf("listPrintRawDev\n");
-	int nnodes = 0;
-	for (struct node *ptr = head; ptr; ptr = (struct node *)GET_UNMARKED_REF(ptr->next))
-	{	
-		// printf("ptr: %llu, ",GET_UNMARKED_REF(ptr));
-		if(!IS_MARKED(ptr->next))
-		{
-			nodePrint(ptr);
-			nnodes++;
-		}
-	}
-	printf("Number of nodes = %d\n", nnodes);
-}
-
-
-__device__ void printVal(int val)
-{
-	printf("val: %d\n",val);
-}
-
-__global__ void printVal(int *arr, int N)
-{
-	for (int i=0;i<N;i++)
-	{
-		printVal(arr[i]);
+			printf("Prev %d not found\n", insertPrevs[idx]);
 	}
 }
 
@@ -432,22 +298,8 @@ __global__ void listRemove(int *Vals, int N)
 	}
 }
 
-__global__ void findNode(int val)
-{
-	printf("findNode\n");
-	struct node* p;
-	p = listSearch(val);
-	printf("\nFind node %d\nunmarked addr: %llu, marked addr: %llu, data: %d\n", val, GET_UNMARKED_REF(p), GET_MARKED_REF(p), ((struct node *)GET_UNMARKED_REF(p))->data);
-	// struct node* ptr = (struct node *)GET_UNMARKED_REF(NULL);
-	// if(!ptr)
-	// 	printf("ptr is null\n");
-	// else
-	// 	printf("ptr ref: %llu\n", GET_UNMARKED_REF(ptr));
-}
-
 void Demo() {
-	// cudaMalloc((void **)&head, sizeof(struct node *));  // work
-	// cudaMemset(&head, 0, sizeof(struct node *));  // original
+	printf("listInit\n");
 	listInit<<<1,1>>>();
 	addFront<<<1,1>>>(3);
 	addFront<<<1,1>>>(2);
@@ -492,12 +344,13 @@ void Demo() {
 	// printVal<<<1,1>>>(rm_d, 3);
 	// cudaDeviceSynchronize();
 	
-
+	printf("\nlistInsert\n");
 	listInsert<<<4, 4>>>(insert_d, prev_d, 5);
 	cudaDeviceSynchronize();
 	listPrint<<<1, 1>>>();
 	cudaDeviceSynchronize();
 	
+	printf("\nlistRemove\n");
 	listRemove<<<1, 4>>>(rm_d, 3);
 	cudaDeviceSynchronize();  // necessary!
 	listPrintRaw<<<1, 1>>>();
@@ -505,6 +358,7 @@ void Demo() {
 	listPrint<<<1, 1>>>();
 	cudaDeviceSynchronize();  // necessary!
 	
+	printf("\nlistTraverse\n");
 	// listSearchOne<<<1,1>>>(80);
 	listTraverse<<<1,1>>>();
 	cudaDeviceSynchronize();  // necessary!
