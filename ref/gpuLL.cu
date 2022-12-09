@@ -377,3 +377,51 @@ int main()
 	Demo();
 	return 0;
 }
+
+/* Demo output
+
+listInit
+listPrint
+head 1 2 3 tail
+Number of nodes = 5
+
+listInsert
+listSearch val: 2
+listSearch val: 2
+listSearch val: 2
+listSearch val: 1
+listSearch val: 3
+val found, cur->data: 2, cur ref: 140077894203920
+val found, cur->data: 2, cur ref: 140077894203920
+val found, cur->data: 2, cur ref: 140077894203920
+val found, cur->data: 1, cur ref: 140077894204000
+val found, cur->data: 3, cur ref: 140077894203840
+listPrint
+head 1 80 2 70 60 50 3 90 tail
+Number of nodes = 10
+
+listRemove
+listSearch val: 1
+listSearch val: 80
+listSearch val: 70
+val found, cur->data: 1, cur ref: 140077894204000
+val found, cur->data: 80, cur ref: 140077894204400
+val found, cur->data: 70, cur ref: 140077894204320
+listPrintRaw
+head 2 60 50 3 90 tail
+Number of nodes = 7
+listPrint
+head 1 80 2 70 60 50 3 90 tail
+Number of nodes = 10
+
+listTraverse
+prev: -1, cur: 2
+prev: 2, cur: 60
+listPrintRaw
+head 2 60 50 3 90 tail
+Number of nodes = 7
+listPrint
+head 2 60 50 3 90 tail
+Number of nodes = 7
+
+*/
