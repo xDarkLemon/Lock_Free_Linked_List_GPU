@@ -200,92 +200,6 @@ __device__ struct node *listSearch(int val)
 	return cur;
 }
 
-__device__ struct node *listSearch(int val, struct node** prev)
-{
-#ifdef DEBUG
-	printf("listSearch val: %d\n", val);
-#endif
-	struct node *cur=NULL, *p, *prev_next;
-	// struct node *prev;
-	int cnt = 0;
-	while(1)
-	{
-		// step1: traverse the list and find the node
-		for(cur=head; cur->next; cur=(struct node *)GET_UNMARKED_REF(cur->next))
-		{
-			if(IS_MARKED(cur->next))  // p->next is marked means p is deleted logically
-			{
-#ifdef DEBUG
-				printf("next is marked\n");
-#endif
-				continue;  // skip this node
-			}
-			if(cur->data == val)  // found
-			{
-				break;
-			}
-			(*prev)=cur;
-
-		}
-#ifdef DEBUG
-		if(cur->next==NULL)  // cur is the tail node
-		{
-			printf("listSearch %d not found, prev data: %d, prev->next data: %d\n", val, (*prev)->data, (*prev)->next->data);
-		}
-		else
-			printf("listSearch val found, cur->data: %d, cur ref: %llu\n", cur->data, GET_UNMARKED_REF(cur));
-#endif
-		// no marked nodes between prev and cur
-		if ((*prev)->next == cur)
-		{
-			if (!cur->next)  // cur not found, cur is tail node
-			{
-#ifdef DEBUG
-				printf("cur reaches the tail\n");
-#endif
-				break;  // then return cur
-			}
-			else
-				if (!IS_MARKED(cur->next))  // if cur is marked as removed during the time, search again
-					break;  // then return cur
-		}
-		
-		// step2: remove marked nodes between prev and cur
-		else
-		{
-#ifdef DEBUG
-			printf("prev data: %d, prev->next data: %d, cur data: %d\n", (*prev)->data, ((*prev)->next)->data, cur->data);
-#endif 
-			// Step 2.1: If an insertions was made in the meantime between left and right, repeat search.
-			int inserted = 0;
-			for(p=(struct node *)GET_UNMARKED_REF((*prev)->next); p==cur; p=(struct node *)GET_UNMARKED_REF(p->next))
-			{
-				// loop from prev to cur, if there is any unmarked node, it is inserted meantime, need to search again
-                if (!IS_MARKED(p->next))
-					inserted = 1;
-			}
-			if (inserted==1)
-				continue;  // search again
-			
-			// No unmarked nodes in between now
-			// Step 2.2: Try to "remove" the marked nodes between left and right.
-			prev_next = (struct node *)atomicCAS((unsigned long long *)&(*prev)->next, GET_UNMARKED_REF((*prev)->next), (unsigned long long)cur);  
-			// update prev->next to cur, delete marked nodes in between (no garbage collection yet)
-            if(prev_next!=(struct node *)GET_UNMARKED_REF((*prev)->next))
-			{
-#ifdef DEBUG
-				if(!prev_next) printf("prev_next NULL\n");
-				else printf("prev_next->data: %d\n",prev_next->data);
-				if(!(*prev)->next) printf("prev->next NULL\n");
-#endif
-				// somone changed left->next, deletion failed, search again
-				continue;
-			}
-        }
-	}
-	return cur;
-}
-
 __device__ void listTraverseDel()
 {
 	struct node *cur, *prev, *p, *prev_next;
@@ -352,8 +266,8 @@ __global__ void listRemove(int *ops, int *Vals, int N)
 
 		while(1)
 		{
-			// cur = listSearch(val);
-			cur = listSearch(val, &prev);
+			cur = listSearch(val);
+			// cur = listSearch(val, &prev);
 			if (cur==NULL || cur->data != val)
 			{
 #ifdef DEBUG
@@ -384,6 +298,7 @@ __global__ void listRemove(int *ops, int *Vals, int N)
 
 		// try to delete physically, envoke search(succ)
 		// slows down too much, use listTraverseDel instead. good for demo.
+/*
 		struct node *actual_prev_next = (struct node*)atomicCAS((unsigned long long *)&prev->next, (unsigned long long)cur, GET_UNMARKED_REF(succ));
 		if (actual_prev_next!=cur)
 		{
@@ -395,7 +310,7 @@ __global__ void listRemove(int *ops, int *Vals, int N)
 #ifdef DEBUG
 		else printf("Physically delete in remove\n");
 #endif
-
+*/
 	}
 }
 
