@@ -465,12 +465,12 @@ void parallelOperate()
 	cudaDeviceSynchronize();
 
 	// parallel insert and remove operations
-	int n_blocks = opN/128+1;
+	int n_blocks = opN/1024+1;
 
 	clock_gettime(CLOCK_REALTIME, &start);
 	
-	listInsert<<<n_blocks, 128>>>(ops, insertNodes, opNodes, opN);
-	listRemove<<<n_blocks, 128>>>(ops, opNodes, opN);
+	listInsert<<<n_blocks, 1024>>>(ops, insertNodes, opNodes, opN);
+	listRemove<<<n_blocks, 1024>>>(ops, opNodes, opN);
 	cudaDeviceSynchronize();
   	// traverse to physically delete the marked nodes (no garbage collection yet)
   	listTraverse<<<1,1>>>();
