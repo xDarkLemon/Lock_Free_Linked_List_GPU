@@ -200,6 +200,11 @@ __device__ struct node *listSearch(int val)
 	return cur;
 }
 
+__global__ void listSearchOne(int val, struct node **p)
+{
+	(*p) = listSearch(val);
+}
+
 __device__ void listTraverseDel()
 {
 	struct node *cur, *prev, *p, *prev_next;
